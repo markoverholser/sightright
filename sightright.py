@@ -80,7 +80,7 @@ def does_database_exist(curr_loc):
     Checks for presence of database in curr_loc folder
     Returns 1 if database exists, 0 if it does not
     """
-    db_name = "sightright.db"
+    db_name = "SightRight.db"
     if os.path.exists(curr_loc + os.sep + db_name):
         return 1
     else:
