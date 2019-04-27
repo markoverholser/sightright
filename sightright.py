@@ -1,25 +1,28 @@
-try:
-    import pygame
-    import time
-    import sys
-    import sqlite3
-    import logging
-    import os
-    from time import gmtime, strftime
-except e:
-    print(e)
+import pygame
+import time
+import sys
+import sqlite3
+import logging
+import os
+import argparse
+from time import gmtime, strftime
 
-ACCEPT_INPUT = 1
-PRESENT_WORD = 2
-CORRECT_GUESS = 3
-INCORRECT_GUESS = 4
-DISPLAY_WAIT = 5
-SKIP_WORD = 6
+# Constants for game states (not necessarily listed in order)
+BATCH_START = 0
+ACCEPT_INPUT = 10
+PRESENT_WORD = 20
+CORRECT_GUESS = 30
+INCORRECT_GUESS = 40
+DISPLAY_WAIT = 50
+SKIP_WORD = 60
+WAIT_FOR_NEW_WORD = 70
+BATCH_END = 80
 
 # Number of milliseconds to keep a word displayed on the screen after state change
 SPLASH_DELAY = 500
 
-debug_on = True
+# Force debug mode on all the time?
+debug_on = False
 
 ################################################################################
 # Error constants                                                              #
@@ -89,38 +92,136 @@ def setup_database(cur, conn):
     """
     cmd = "CREATE TABLE phrases (phrase, list, enabled, difficulty);"
     cur.execute(cmd)
-    cmd = "CREATE TABLE response_history (word_id, response_time_ms, response_correct);"
+    cmd = "CREATE TABLE batches (batch_id, start_time, end_time);"
+    cur.execute(cmd)
+    cmd = "CREATE TABLE response_history (batch_id, phrase_id, response_time_ms, response_status);"
     cur.execute(cmd)
     conn.commit()
 
-def print_debug(message):
-    global debug_on
-    if debug_on:
-        print("DEBUG: %s" % message)
+# def print_debug(message):
+#     global debug_on
+#     if debug_on:
+#         print("DEBUG: %s" % message)
 
-def word_display(word, background_color, text_color):
-    global game_font
+def update_display():
+    global sight_word_font
     global display_width
     global display_height
     global game_display
 
-    print_debug("Displaying text %s with background %s and color %s" % (word, background_color, text_color))
-    print_debug("Filling background")
+    global current_word
+    global game_state
+    global score
+
     background = pygame.Surface(game_display.get_size())
     background = background.convert()
-    background.fill(background_color)
-    #game_display.fill(background_color)
-    print_debug("Getting text surface")
-    text_surface = game_font.render(word, True, text_color)
-    print_debug("Getting text rectangle")
-    text_rectangle = text_surface.get_rect()
-    print_debug("Centering text rectangle in display")
-    text_rectangle.center = ((display_width/2), (display_height/2))
-    print_debug("Blitting text to background")
-    background.blit(text_surface, text_rectangle)
-    print_debug("Blitting background to screen")
+
+    if game_state == PRESENT_WORD:
+        background_color = white
+        text_color = black
+        word = current_word
+
+        background.fill(background_color)
+
+    elif game_state == CORRECT_GUESS:
+        background_color = green
+        text_color = white
+        word = current_word
+
+        answer_delay_text = "Answer time: %d ms" % answer_delay_ms
+
+        background.fill(background_color)
+
+        answer_delay_surface = controls_font.render(answer_delay_text, True, text_color)
+        answer_delay_rectangle = answer_delay_surface.get_rect()
+        answer_delay_rectangle.center = (display_width/2, int(display_height*3/4))
+        background.blit(answer_delay_surface, answer_delay_rectangle)
+
+    elif game_state == INCORRECT_GUESS:
+        background_color = black
+        text_color = white
+        word = current_word
+
+        answer_delay_text = "Answer time: %d ms" % answer_delay_ms
+
+        background.fill(background_color)
+
+        answer_delay_surface = controls_font.render(answer_delay_text, True, text_color)
+        answer_delay_rectangle = answer_delay_surface.get_rect()
+        answer_delay_rectangle.center = (display_width/2, int(display_height*3/4))
+        background.blit(answer_delay_surface, answer_delay_rectangle)
+    elif game_state == SKIP_WORD:
+        background_color = white
+        text_color = black
+        word = ""
+
+        background.fill(background_color)
+    elif game_state == WAIT_FOR_NEW_WORD:
+        background_color = white
+        text_color = black
+        word = ""
+
+        background.fill(background_color)
+
+        continue_control_text = "Press Space to continue"
+        continue_control_surface = controls_font.render(continue_control_text, True, text_color)
+        continue_control_rectangle = continue_control_surface.get_rect()
+        continue_control_rectangle.midbottom = (display_width/2, display_height)
+        background.blit(continue_control_surface, continue_control_rectangle)
+
+    quit_control_text = "Esc: Quit"
+    quit_control_surface = controls_font.render(quit_control_text, True, text_color)
+    quit_control_rectangle = quit_control_surface.get_rect()
+    quit_control_rectangle.topleft = (0, 0)
+    background.blit(quit_control_surface, quit_control_rectangle)
+
+    score_control_text = "Score: %d (%d%%)" % (score, int((score/total_words)*100))
+    score_control_surface = controls_font.render(score_control_text, True, text_color)
+    score_control_rectangle = score_control_surface.get_rect()
+    score_control_rectangle.topright = (display_width, 0)
+    background.blit(score_control_surface, score_control_rectangle)
+
+    progress_control_text = "Word: %d of %d" % (current_word_number, total_words)
+    progress_control_surface = controls_font.render(progress_control_text, True, text_color)
+    progress_control_rectangle = progress_control_surface.get_rect()
+    progress_control_rectangle.bottomleft = (0, display_height)
+    background.blit(progress_control_surface, progress_control_rectangle)
+
+    lower_right_controls_text_3 = 'Right: Skip word'
+    lower_right_controls_text_2 = 'Down: Incorrect'
+    lower_right_controls_text_1 = 'Up: Correct'
+
+    lower_right_controls_text_3_surface = controls_font.render(lower_right_controls_text_3, True, text_color)
+    lower_right_controls_text_3_rectangle = lower_right_controls_text_3_surface.get_rect()
+    lower_right_controls_text_3_rectangle.bottomright = ((display_width), (display_height))
+    background.blit(lower_right_controls_text_3_surface, lower_right_controls_text_3_rectangle)
+
+    lower_right_controls_text_2_surface = controls_font.render(lower_right_controls_text_2, True, text_color)
+    lower_right_controls_text_2_rectangle = lower_right_controls_text_2_surface.get_rect()
+    lower_right_controls_text_2_rectangle.bottomleft = lower_right_controls_text_3_rectangle.topleft
+    background.blit(lower_right_controls_text_2_surface, lower_right_controls_text_2_rectangle)
+
+    lower_right_controls_text_1_surface = controls_font.render(lower_right_controls_text_1, True, text_color)
+    lower_right_controls_text_1_rectangle = lower_right_controls_text_1_surface.get_rect()
+    lower_right_controls_text_1_rectangle.bottomleft = lower_right_controls_text_2_rectangle.topleft
+    background.blit(lower_right_controls_text_1_surface, lower_right_controls_text_1_rectangle)
+
+    main_word_surface = sight_word_font.render(word, True, text_color)
+    main_word_rectangle = main_word_surface.get_rect()
+    main_word_rectangle.center = ((display_width/2), (display_height/2))
+    background.blit(main_word_surface, main_word_rectangle)
+
+    # controls_surface = controls_font.render("Down = Incorrect, Up = Correct, Right = Skip, Esc = Quit", True, text_color)
+    # logger.debug("Getting text rectangle for controls")
+    # controls_rectangle = controls_surface.get_rect()
+    # logger.debug("Centering text rectangle for controls in display horizontally")
+    # controls_rectangle.center = ((display_width/2), (display_height - controls_rectangle.height))
+    # logger.debug("Blitting text controls to background")
+    # background.blit(controls_surface, controls_rectangle)
+
+    logger.debug("Blitting background to screen")
     game_display.blit(background, (0,0))
-    print_debug("Updating display")
+    logger.debug("Updating display")
     pygame.display.flip()
     return
 
@@ -139,7 +240,27 @@ def quit_sightright(error_level):
     logger.info('SightRight execution finished')
     sys.exit(error_level)
 
-print_debug("Initializing pygame")
+# Set up argument parser
+parser = argparse.ArgumentParser(description='A flash card game for parents and children to play together')
+
+parser.add_argument('-l', '--list-words',
+                    action="store_const", const="LIST-WORDS",
+                    dest="list_words",
+                    help='List words/phrases stored in the database')
+
+parser.add_argument('-d', '--debug',
+                    action="store_const",
+                    const="DEBUG",
+                    dest="debug",
+                    help='Enable debug output, for more verbosity')
+
+arguments = parser.parse_args()
+
+if arguments.debug or debug_on:
+    logger.setLevel(logging.DEBUG)
+    console_log_stream_handler.setLevel(logging.DEBUG)
+
+logger.debug("Initializing pygame")
 pygame.init()
 game_clock = pygame.time.Clock()
 
@@ -151,130 +272,197 @@ white = (255,255,255)
 red = (255,0,0)
 green = (46,172,102)
 
-print_debug("Setting display mode")
+logger.debug("Setting display mode")
 game_display = pygame.display.set_mode((display_width,display_height))
-print_debug("Setting window caption")
+logger.debug("Setting window caption")
 pygame.display.set_caption('Flash Cards')
-print_debug("Initializing clock")
+logger.debug("Initializing clock")
 clock = pygame.time.Clock()
-print_debug("Initializing font")
-game_font = pygame.font.Font('freesansbold.ttf', 115)
+logger.debug("Initializing font")
+sight_word_font = pygame.font.Font('freesansbold.ttf', 115)
+controls_font = pygame.font.Font('freesansbold.ttf', 20)
 
 
+current_word = "Word"
+total_words = 30
+current_word_number = 0
+score = 0
 
+logger.debug("Setting state to PRESENT_WORD")
+game_state = PRESENT_WORD
+logger.debug("Current word is: %s" % current_word)
 def game_loop():
     global game_display
     # Hack, remove this at some point
-    current_word = "Word"
-    print_debug("Game loop beginning")
+    global current_word
+    global game_state
+    global total_words
+    global current_word_number
+    global score
+    global answer_delay_ms
+
+    logger.debug("Game loop beginning")
+    logger.debug("Current word is: %s" % current_word)
 
     game_exit = False
-    # accepting_input = True
-    game_state = ACCEPT_INPUT
 
     while game_exit == False:
         if game_state == PRESENT_WORD:
-            print_debug("In PRESENT_WORD state")
-            word_display("Word", white, black)
+            current_word_number += 1
+            # Choose the next word and set it
+
+            # Display the word
+            update_display()
+
+            # Keep track of the tick when the word was rendered (for timekeeping)
+            last_word_display_time = time.monotonic()
             # Clear the event queue
             pygame.event.clear()
             # Transition to next state
-            print_debug("Transitioning to ACCEPT_INPUT state")
+            logger.debug("Setting state to ACCEPT_INPUT")
             game_state = ACCEPT_INPUT
 
         elif game_state == ACCEPT_INPUT:
-            print_debug("In ACCEPT_INPUT state")
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    print_debug("Quit event detected")
+                    logger.debug("Quit event detected")
                     pygame.quit()
                     quit()
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
                     # Down pressed
                     # Bad guess
-                    print_debug("Keyboard `arrow down` detected")
+                    logger.debug("Keyboard `arrow down` detected")
                     game_state = INCORRECT_GUESS
-                    pass
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP:
                     # Up pressed
                     # Good guess
-                    print_debug("Keyboard `arrow up` detected")
+                    logger.debug("Keyboard `arrow up` detected")
                     game_state = CORRECT_GUESS
-                    pass
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_RIGHT:
+                    # Right pressed
+                    # Skipping word
+                    logger.debug("Keyboard `arrow right` detected")
+                    game_state = SKIP_WORD
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    print_debug("Keyboard `escape` detected")
+                    logger.debug("Keyboard `escape` detected")
+                    pygame.quit()
+                    quit()
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+                    logger.debug("Keyboard `q` detected")
                     pygame.quit()
                     quit()
 
         elif game_state == CORRECT_GUESS:
-            print_debug("In CORRECT_GUESS state")
             # Clear the event queue
             #pygame.event.clear()
+
+            # Add to score
+            score += 1
+
+            # Calculate number of milliseconds since word was displayed
+            answer_time = time.monotonic()
+            answer_delay_ms = int((answer_time - last_word_display_time) * 1000)
+
             # Render the word as correct
-            print_debug("Rendering current word '%s' as correct" % current_word)
-            word_display(current_word, green, white)
+            logger.debug("Rendering current word '%s' as correct" % current_word)
+            update_display()
 
             # Set up timer
-            print_debug("Setting new timer for display")
+            logger.debug("Setting new timer for display")
             pygame.time.set_timer(pygame.USEREVENT + 1, SPLASH_DELAY)
 
             # Advance to DISPLAY_WAIT state
+            logger.debug("Setting state to DISPLAY_WAIT")
             game_state = DISPLAY_WAIT
 
         elif game_state == INCORRECT_GUESS:
-            print_debug("In INCORRECT_GUESS state")
             # Clear the event queue
             #pygame.event.clear()
+
+            # Calculate number of milliseconds since word was displayed
+            answer_time = time.monotonic()
+            answer_delay_ms = int((answer_time - last_word_display_time) * 1000)
+
             # Render the word as incorrect
-            print_debug("Rendering current word '%s' as incorrect" % current_word)
-            word_display(current_word, black, white)
+            logger.debug("Rendering current word '%s' as incorrect" % current_word)
+            update_display()
 
             # Set up timer
-            print_debug("Setting new timer for display")
+            logger.debug("Setting new timer for display")
             pygame.time.set_timer(pygame.USEREVENT + 1, SPLASH_DELAY)
 
             # Advance to DISPLAY_WAIT state
+            logger.debug("Setting state to DISPLAY_WAIT")
             game_state = DISPLAY_WAIT
 
         elif game_state == DISPLAY_WAIT:
-            print_debug("In DISPLAY_WAIT state")
-
             for event in pygame.event.get():
                 # print(event)
                 # Check to see if the timer has lapsed
                 if event.type == pygame.USEREVENT + 1:
-                    print_debug("Timer lapsed")
+                    logger.debug("Timer lapsed")
                     # Timer has happened
                     # Unset timer
                     pygame.time.set_timer(pygame.USEREVENT + 1, 0)
                     # Change back to PRESENT_WORD state
-                    game_state = PRESENT_WORD
+                    logger.debug("Setting state to PRESENT_WORD")
+                    game_state = WAIT_FOR_NEW_WORD
                 elif event.type == pygame.QUIT:
-                    print_debug("Quit event detected")
+                    logger.debug("Quit event detected")
                     pygame.quit()
                     quit()
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    print_debug("Keyboard `escape` detected")
+                    logger.debug("Keyboard `escape` detected")
+                    pygame.quit()
+                    quit()
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+                    logger.debug("Keyboard `q` detected")
                     pygame.quit()
                     quit()
 
         elif game_state == SKIP_WORD:
-            print_debug("In SKIP_WORD state")
             pass
             # Clear the event queue
             #pygame.event.clear()
 
+            # Display nothing but a white background
+            update_display()
+
             # Set up timer
-            print_debug("Setting new timer for display")
+            logger.debug("Setting new timer for display")
             pygame.time.set_timer(pygame.USEREVENT + 1, SPLASH_DELAY)
 
             # Advance to DISPLAY_WAIT state
+            logger.debug("Setting state to DISPLAY_WAIT")
             game_state = DISPLAY_WAIT
 
-        # print_debug("Ticking clock")
+        elif game_state == WAIT_FOR_NEW_WORD:
+            update_display()
+
+            # Check to see if any key is pressed
+            for event in pygame.event.get():
+                # print(event)
+                # Check to see if the timer has lapsed
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                    logger.debug("Spacebar pressed")
+                    logger.debug("Setting state to PRESENT_WORD")
+                    game_state = PRESENT_WORD
+                elif event.type == pygame.QUIT:
+                    logger.debug("Quit event detected")
+                    pygame.quit()
+                    quit()
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    logger.debug("Keyboard `escape` detected")
+                    pygame.quit()
+                    quit()
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+                    logger.debug("Keyboard `q` detected")
+                    pygame.quit()
+                    quit()
+        # logger.debug("Ticking clock")
         game_clock.tick(60)
 
-    print_debug("Game loop end")
+    logger.debug("Game loop end")
 
 if does_database_exist(current_directory):
     # Database was found
@@ -307,7 +495,7 @@ else:
         setup_database(cursor, connection)
         logger.info("Database setup complete")
 
-print_debug("Starting game loop")
+logger.debug("Starting game loop")
 game_loop()
 pygame.quit()
 quit_sightright(0)
