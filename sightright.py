@@ -112,6 +112,8 @@ def update_display():
     global current_word
     global game_state
     global score
+    global background_color
+    global text_color
 
     background = pygame.Surface(game_display.get_size())
     background = background.convert()
@@ -157,11 +159,19 @@ def update_display():
 
         background.fill(background_color)
     elif game_state == WAIT_FOR_NEW_WORD:
-        background_color = white
-        text_color = black
-        word = ""
+        # Don't change colors, reuse from before
+        # background_color = white
+        # text_color = black
+        word = current_word
 
+        answer_delay_text = "Answer time: %d ms" % answer_delay_ms
+        
         background.fill(background_color)
+        
+        answer_delay_surface = controls_font.render(answer_delay_text, True, text_color)
+        answer_delay_rectangle = answer_delay_surface.get_rect()
+        answer_delay_rectangle.center = (display_width/2, int(display_height*3/4))
+        background.blit(answer_delay_surface, answer_delay_rectangle)
 
         continue_control_text = "Press Space to continue"
         continue_control_surface = controls_font.render(continue_control_text, True, text_color)
