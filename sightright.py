@@ -19,7 +19,7 @@ WAIT_FOR_NEW_WORD = 70
 BATCH_END = 80
 
 # Number of milliseconds to keep a word displayed on the screen after state change
-SPLASH_DELAY = 500
+SPLASH_DELAY = 700
 
 # Force debug mode on all the time?
 debug_on = False
@@ -274,8 +274,8 @@ logger.debug("Initializing pygame")
 pygame.init()
 game_clock = pygame.time.Clock()
 
-display_width = 800
-display_height = 600
+display_width = 400
+display_height = 300
 
 black = (0,0,0)
 white = (255,255,255)
@@ -416,7 +416,7 @@ def game_loop():
                     pygame.time.set_timer(pygame.USEREVENT + 1, 0)
                     # Change back to PRESENT_WORD state
                     logger.debug("Setting state to PRESENT_WORD")
-                    game_state = WAIT_FOR_NEW_WORD
+                    game_state = PRESENT_WORD
                 elif event.type == pygame.QUIT:
                     logger.debug("Quit event detected")
                     pygame.quit()
