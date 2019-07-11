@@ -158,26 +158,26 @@ def update_display():
         word = ""
 
         background.fill(background_color)
-    elif game_state == WAIT_FOR_NEW_WORD:
-        # Don't change colors, reuse from before
-        # background_color = white
-        # text_color = black
-        word = current_word
+    #elif game_state == WAIT_FOR_NEW_WORD:
+        ## Don't change colors, reuse from before
+        ## background_color = white
+        ## text_color = black
+        #word = current_word
 
-        answer_delay_text = "Answer time: %d ms" % answer_delay_ms
+        #answer_delay_text = "Answer time: %d ms" % answer_delay_ms
         
-        background.fill(background_color)
+        #background.fill(background_color)
         
-        answer_delay_surface = controls_font.render(answer_delay_text, True, text_color)
-        answer_delay_rectangle = answer_delay_surface.get_rect()
-        answer_delay_rectangle.center = (display_width/2, int(display_height*3/4))
-        background.blit(answer_delay_surface, answer_delay_rectangle)
+        #answer_delay_surface = controls_font.render(answer_delay_text, True, text_color)
+        #answer_delay_rectangle = answer_delay_surface.get_rect()
+        #answer_delay_rectangle.center = (display_width/2, int(display_height*3/4))
+        #background.blit(answer_delay_surface, answer_delay_rectangle)
 
-        continue_control_text = "Press Space to continue"
-        continue_control_surface = controls_font.render(continue_control_text, True, text_color)
-        continue_control_rectangle = continue_control_surface.get_rect()
-        continue_control_rectangle.midbottom = (display_width/2, display_height)
-        background.blit(continue_control_surface, continue_control_rectangle)
+        #continue_control_text = "Press Space to continue"
+        #continue_control_surface = controls_font.render(continue_control_text, True, text_color)
+        #continue_control_rectangle = continue_control_surface.get_rect()
+        #continue_control_rectangle.midbottom = (display_width/2, display_height)
+        #background.blit(continue_control_surface, continue_control_rectangle)
 
     quit_control_text = "Esc: Quit"
     quit_control_surface = controls_font.render(quit_control_text, True, text_color)
