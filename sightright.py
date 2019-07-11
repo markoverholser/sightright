@@ -15,7 +15,7 @@ CORRECT_GUESS = 30
 INCORRECT_GUESS = 40
 DISPLAY_WAIT = 50
 SKIP_WORD = 60
-WAIT_FOR_NEW_WORD = 70
+#WAIT_FOR_NEW_WORD = 70
 BATCH_END = 80
 
 # Number of milliseconds to keep a word displayed on the screen after state change
@@ -446,29 +446,29 @@ def game_loop():
             logger.debug("Setting state to DISPLAY_WAIT")
             game_state = DISPLAY_WAIT
 
-        elif game_state == WAIT_FOR_NEW_WORD:
-            update_display()
+        #elif game_state == WAIT_FOR_NEW_WORD:
+            #update_display()
 
-            # Check to see if any key is pressed
-            for event in pygame.event.get():
-                # print(event)
-                # Check to see if the timer has lapsed
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                    logger.debug("Spacebar pressed")
-                    logger.debug("Setting state to PRESENT_WORD")
-                    game_state = PRESENT_WORD
-                elif event.type == pygame.QUIT:
-                    logger.debug("Quit event detected")
-                    pygame.quit()
-                    quit()
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    logger.debug("Keyboard `escape` detected")
-                    pygame.quit()
-                    quit()
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_q:
-                    logger.debug("Keyboard `q` detected")
-                    pygame.quit()
-                    quit()
+            ## Check to see if any key is pressed
+            #for event in pygame.event.get():
+                ## print(event)
+                ## Check to see if the timer has lapsed
+                #if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                    #logger.debug("Spacebar pressed")
+                    #logger.debug("Setting state to PRESENT_WORD")
+                    #game_state = PRESENT_WORD
+                #elif event.type == pygame.QUIT:
+                    #logger.debug("Quit event detected")
+                    #pygame.quit()
+                    #quit()
+                #elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    #logger.debug("Keyboard `escape` detected")
+                    #pygame.quit()
+                    #quit()
+                #elif event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+                    #logger.debug("Keyboard `q` detected")
+                    #pygame.quit()
+                    #quit()
         # logger.debug("Ticking clock")
         game_clock.tick(60)
 
