@@ -274,8 +274,8 @@ logger.debug("Initializing pygame")
 pygame.init()
 game_clock = pygame.time.Clock()
 
-display_width = 400
-display_height = 300
+display_width = 480
+display_height = 272
 
 black = (0,0,0)
 white = (255,255,255)
