@@ -19,7 +19,7 @@ SKIP_WORD = 60
 BATCH_END = 80
 
 # Number of milliseconds to keep a word displayed on the screen after state change
-SPLASH_DELAY = 700
+SPLASH_DELAY = 70
 
 # Force debug mode on all the time?
 debug_on = False
@@ -117,8 +117,21 @@ def update_display():
 
     background = pygame.Surface(game_display.get_size())
     background = background.convert()
-
-    if game_state == PRESENT_WORD:
+    
+    if game_state == BATCH_START:
+        background_color = white
+        text_color = black
+        word = ""
+        
+        background.fill(background_color)
+        
+        press_key_to_begin_text = "Press any key to begin"
+        press_key_to_begin_surface = controls_font.render(press_key_to_begin_text, True, text_color)
+        press_key_to_begin_rectangle = press_key_to_begin_surface.get_rect()
+        press_key_to_begin_rectangle.center = (int(display_width/2), int(display_height/2))
+        background.blit(press_key_to_begin_surface, press_key_to_begin_rectangle)
+    
+    elif game_state == PRESENT_WORD:
         background_color = white
         text_color = black
         word = current_word
@@ -158,6 +171,20 @@ def update_display():
         word = ""
 
         background.fill(background_color)
+    
+    elif game_state == BATCH_END:
+        background_color = white
+        text_color = black
+        word = ""
+        
+        background.fill(background_color)
+        
+        press_key_to_end_text = "Round complete. Press Q or Esc to quit"
+        press_key_to_end_surface = controls_font.render(press_key_to_end_text, True, text_color)
+        press_key_to_end_rectangle = press_key_to_end_surface.get_rect()
+        press_key_to_end_rectangle.center = (int(display_width/2), int(display_height/2))
+        background.blit(press_key_to_end_surface, press_key_to_end_rectangle)
+        
     #elif game_state == WAIT_FOR_NEW_WORD:
         ## Don't change colors, reuse from before
         ## background_color = white
@@ -185,7 +212,7 @@ def update_display():
     quit_control_rectangle.topleft = (0, 0)
     background.blit(quit_control_surface, quit_control_rectangle)
 
-    score_control_text = "Score: %d (%d%%)" % (score, int((score/total_words)*100))
+    score_control_text = "Score: %d (%d%%)" % (score, int((score/max(current_word_number-1, 1))*100))
     score_control_surface = controls_font.render(score_control_text, True, text_color)
     score_control_rectangle = score_control_surface.get_rect()
     score_control_rectangle.topright = (display_width, 0)
@@ -298,9 +325,15 @@ total_words = 30
 current_word_number = 0
 score = 0
 
-logger.debug("Setting state to PRESENT_WORD")
-game_state = PRESENT_WORD
-logger.debug("Current word is: %s" % current_word)
+logger.debug("Setting state to BATCH_START")
+
+game_state = BATCH_START
+# Update the display now before starting the loop
+# Otherwise we need an update_display() call in the loop for BATCH_START
+# which makes it unnecessarily chatty in the debug logs
+update_display()
+
+#logger.debug("Current word is: %s" % current_word)
 def game_loop():
     global game_display
     # Hack, remove this at some point
@@ -317,7 +350,31 @@ def game_loop():
     game_exit = False
 
     while game_exit == False:
-        if game_state == PRESENT_WORD:
+        if game_state == BATCH_START:
+            # Don't update the display here, it makes the debug logs too chatty
+            # Instead update the display immediately after setting the state to BATCH_END
+            # elsewhere in the code
+            # update_display()
+            
+            # Wait for a keypress to continue
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    logger.debug("Quit event detected")
+                    pygame.quit()
+                    quit()
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    logger.debug("Keyboard `escape` detected")
+                    pygame.quit()
+                    quit()
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+                    logger.debug("Keyboard `q` detected")
+                    pygame.quit()
+                    quit()
+                elif event.type == pygame.KEYDOWN:
+                    logger.debug("Setting state to PRESENT_WORD")
+                    game_state = PRESENT_WORD
+                    
+        elif game_state == PRESENT_WORD:
             current_word_number += 1
             # Choose the next word and set it
 
@@ -414,9 +471,19 @@ def game_loop():
                     # Timer has happened
                     # Unset timer
                     pygame.time.set_timer(pygame.USEREVENT + 1, 0)
-                    # Change back to PRESENT_WORD state
-                    logger.debug("Setting state to PRESENT_WORD")
-                    game_state = PRESENT_WORD
+                    
+                    if current_word_number == total_words:
+                        # We have reached the target number of words
+                        # Time to leave the user no option but to quit
+                        logger.debug("Setting state to BATCH_END")
+                        game_state = BATCH_END
+                        # Update the display here so that we don't have to do it in the game_state == BATCH_END
+                        # That causes unnecessarily chatty debug logs
+                        update_display()
+                    else:
+                        # Change back to PRESENT_WORD state
+                        logger.debug("Setting state to PRESENT_WORD")
+                        game_state = PRESENT_WORD
                 elif event.type == pygame.QUIT:
                     logger.debug("Quit event detected")
                     pygame.quit()
@@ -469,6 +536,25 @@ def game_loop():
                     #logger.debug("Keyboard `q` detected")
                     #pygame.quit()
                     #quit()
+        
+        elif game_state == BATCH_END:
+            # Don't update the display here, it makes the debug logs too chatty
+            # Instead update the display immediately after setting the state to BATCH_END
+            # elsewhere in the code
+            # update_display()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    logger.debug("Quit event detected")
+                    pygame.quit()
+                    quit()
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    logger.debug("Keyboard `escape` detected")
+                    pygame.quit()
+                    quit()
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+                    logger.debug("Keyboard `q` detected")
+                    pygame.quit()
+                    quit()
         # logger.debug("Ticking clock")
         game_clock.tick(60)
 
