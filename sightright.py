@@ -75,6 +75,15 @@ console_log_stream_handler.setLevel(logging.INFO)
 logger.addHandler(console_log_stream_handler)
 logger.addHandler(disk_file_handler)
 
+################################################################################
+# Classes                                                                      #
+################################################################################
+
+class phrase:
+	phrase_id = ''
+	text = ''
+	batch_id = ''
+	
 def does_database_exist(curr_loc):
     """
     Checks for presence of database in curr_loc folder
@@ -92,9 +101,9 @@ def setup_database(cur, conn):
     """
     cmd = "CREATE TABLE phrases (phrase, list, enabled, difficulty);"
     cur.execute(cmd)
-    cmd = "CREATE TABLE batches (batch_id, start_time, end_time);"
+    cmd = "CREATE TABLE batches (batch_id INT NOT NULL, start_time, end_time);"
     cur.execute(cmd)
-    cmd = "CREATE TABLE response_history (batch_id, phrase_id, response_time_ms, response_status);"
+    cmd = "CREATE TABLE response_history (batch_id INT NOT NULL, phrase_id INT NOT NULL, response_time_ms INT, response_status);"
     cur.execute(cmd)
     conn.commit()
 
@@ -109,7 +118,7 @@ def update_display():
     global display_height
     global game_display
 
-    global current_word
+    global current_phrase
     global game_state
     global score
     global background_color
@@ -134,14 +143,14 @@ def update_display():
     elif game_state == PRESENT_WORD:
         background_color = white
         text_color = black
-        word = current_word
+        word = current_phrase.text
 
         background.fill(background_color)
 
     elif game_state == CORRECT_GUESS:
         background_color = green
         text_color = white
-        word = current_word
+        word = current_phrase.text
 
         answer_delay_text = "Answer time: %d ms" % answer_delay_ms
 
@@ -155,7 +164,7 @@ def update_display():
     elif game_state == INCORRECT_GUESS:
         background_color = black
         text_color = white
-        word = current_word
+        word = current_phrase.text
 
         answer_delay_text = "Answer time: %d ms" % answer_delay_ms
 
@@ -189,7 +198,7 @@ def update_display():
         ## Don't change colors, reuse from before
         ## background_color = white
         ## text_color = black
-        #word = current_word
+        #word = current_phrase.text
 
         #answer_delay_text = "Answer time: %d ms" % answer_delay_ms
         
@@ -212,13 +221,13 @@ def update_display():
     quit_control_rectangle.topleft = (0, 0)
     background.blit(quit_control_surface, quit_control_rectangle)
 
-    score_control_text = "Score: %d (%d%%)" % (score, int((score/max(current_word_number-1, 1))*100))
+    score_control_text = "Score: %d (%d%%)" % (score, int((score/max(current_phrase_number-1, 1))*100))
     score_control_surface = controls_font.render(score_control_text, True, text_color)
     score_control_rectangle = score_control_surface.get_rect()
     score_control_rectangle.topright = (display_width, 0)
     background.blit(score_control_surface, score_control_rectangle)
 
-    progress_control_text = "Word: %d of %d" % (current_word_number, total_words)
+    progress_control_text = "Word: %d of %d" % (current_phrase_number, total_words)
     progress_control_surface = controls_font.render(progress_control_text, True, text_color)
     progress_control_rectangle = progress_control_surface.get_rect()
     progress_control_rectangle.bottomleft = (0, display_height)
@@ -270,6 +279,96 @@ def connect_database(curr_loc):
     conn = sqlite3.connect(curr_loc + os.sep + "SightRight.db")
     return conn
 
+def log_phrase_result(cur, conn, batch_id, phrase_id, time_to_result, result):
+    global logger
+    
+    try:
+        cmd = 'INSERT INTO response_history (batch_id, phrase_id, response_time_ms, response_status) VALUES (%s, %s, %s, "%s")' % (batch_id, phrase_id, time_to_result, result)
+        cur.execute(cmd)
+        conn.commit()
+    except sqlite3.OperationalError:
+        logger.error("Could not log results into database: (%s, %s, %s, %s)" % (batch_id, phrase_id, time_to_result, result))
+        return None
+	
+def get_phrase_batch(cur, conn, num_of_words):
+    global logger
+    
+    try:
+        cmd = 'SELECT max(batch_id) FROM batches'
+        cur.execute(cmd)
+        conn.commit()
+        
+        batch_id = cur.fetchall()[0][0]
+        logger.debug(batch_id)
+        batch_id += 1
+    except:
+        logger.warn("There are no current batches")
+        batch_id = 1
+    
+    try:
+        cmd = 'INSERT INTO batches (batch_id) VALUES (%s)' % batch_id
+        cur.execute(cmd)
+        conn.commit()
+    except:
+        logger.error("Could not add batch %s to database" % batch_id)
+        return None
+    
+    try:
+        cmd = 'SELECT rowid,phrase FROM phrases WHERE enabled="True" ORDER BY RANDOM() LIMIT %s' % num_of_words
+        cur.execute(cmd)
+        conn.commit()
+        
+        phrases = []
+        for returned_phrase in cur.fetchall():
+            phrase_obj = phrase()
+            
+            phrase_obj.phrase_id = returned_phrase[0]
+            phrase_obj.text = returned_phrase[1]
+            phrase_obj.batch_id = batch_id
+            
+            phrases.append(phrase_obj)
+        
+        return phrases
+    except:
+        logger.error("Something bad happened") # This is what happens when you write code at midnight
+
+def add_phrase_to_database(cur, conn, phrase, origin_list):
+    global logger
+    
+    try:
+        cmd = 'SELECT rowid,phrase FROM phrases where phrase="%s"' % phrase
+        cur.execute(cmd)
+        conn.commit()
+        
+        returned = cur.fetchall()[0]
+        # If we make it this far, that means that there *is* already that phrase present in the database, so we should return None to signal that
+        logger.debug("Phrase '%s' is already present in the database" % phrase)
+        return None
+    except:
+        # There are no items in the database with that phrase
+        logger.debug("Phrase '%s' does not exist in the database, adding" % phrase)
+        pass
+    
+    # Now we can try to add it to the database
+    try:
+        cmd = 'INSERT INTO phrases (phrase, list, enabled) VALUES ("%s", "%s", "True")' % (phrase, origin_list)
+        cur.execute(cmd)
+        conn.commit()
+    except sqlite3.OperationalError:
+        logger.error("Error inserting '%s' into the database" % phrase)
+        return None
+    
+    # Now we get the rowid of the phrase to return it
+    try:
+        cmd = 'SELECT rowid,phrase FROM phrases where phrase="%s"' % phrase
+        cur.execute(cmd)
+        conn.commit()
+        
+        rowid = cur.fetchall()[0][0]
+        return rowid
+    except:
+        pass
+
 def quit_sightright(error_level):
     global logger
     if error_level != 0:
@@ -280,10 +379,14 @@ def quit_sightright(error_level):
 # Set up argument parser
 parser = argparse.ArgumentParser(description='A flash card game for parents and children to play together')
 
-parser.add_argument('-l', '--list-words',
-                    action="store_const", const="LIST-WORDS",
-                    dest="list_words",
-                    help='List words/phrases stored in the database')
+parser.add_argument('-l', '--list-phrases',
+                    action="store_const", const="LIST-PHRASES",
+                    dest="list_phrases",
+                    help='List phrases stored in the database')
+
+parser.add_argument('-i', '--import-phrases',
+                    action="store", dest="import_phrases",
+                    help='Import a CSV file of phrases into the database')
 
 parser.add_argument('-d', '--debug',
                     action="store_const",
@@ -297,55 +400,19 @@ if arguments.debug or debug_on:
     logger.setLevel(logging.DEBUG)
     console_log_stream_handler.setLevel(logging.DEBUG)
 
-logger.debug("Initializing pygame")
-pygame.init()
-game_clock = pygame.time.Clock()
-
-display_width = 480
-display_height = 272
-
-black = (0,0,0)
-white = (255,255,255)
-red = (255,0,0)
-green = (46,172,102)
-
-logger.debug("Setting display mode")
-game_display = pygame.display.set_mode((display_width,display_height))
-logger.debug("Setting window caption")
-pygame.display.set_caption('Flash Cards')
-logger.debug("Initializing clock")
-clock = pygame.time.Clock()
-logger.debug("Initializing font")
-sight_word_font = pygame.font.Font('freesansbold.ttf', 115)
-controls_font = pygame.font.Font('freesansbold.ttf', 20)
-
-
-current_word = "Word"
-total_words = 30
-current_word_number = 0
-score = 0
-
-logger.debug("Setting state to BATCH_START")
-
-game_state = BATCH_START
-# Update the display now before starting the loop
-# Otherwise we need an update_display() call in the loop for BATCH_START
-# which makes it unnecessarily chatty in the debug logs
-update_display()
-
-#logger.debug("Current word is: %s" % current_word)
 def game_loop():
     global game_display
     # Hack, remove this at some point
-    global current_word
+    global current_phrase
+    global phrases
     global game_state
     global total_words
-    global current_word_number
+    global current_phrase_number
     global score
     global answer_delay_ms
 
     logger.debug("Game loop beginning")
-    logger.debug("Current word is: %s" % current_word)
+    logger.debug("Current word is: %s" % current_phrase.text)
 
     game_exit = False
 
@@ -375,8 +442,9 @@ def game_loop():
                     game_state = PRESENT_WORD
                     
         elif game_state == PRESENT_WORD:
-            current_word_number += 1
+            current_phrase_number += 1
             # Choose the next word and set it
+            current_phrase = phrases[current_phrase_number - 1]
 
             # Display the word
             update_display()
@@ -431,8 +499,11 @@ def game_loop():
             answer_delay_ms = int((answer_time - last_word_display_time) * 1000)
 
             # Render the word as correct
-            logger.debug("Rendering current word '%s' as correct" % current_word)
+            logger.debug("Rendering current word '%s' as correct" % current_phrase.text)
             update_display()
+            
+            # Log to database
+            log_phrase_result(cursor, connection, current_phrase.batch_id, current_phrase.phrase_id, answer_delay_ms, "Correct")
 
             # Set up timer
             logger.debug("Setting new timer for display")
@@ -451,8 +522,11 @@ def game_loop():
             answer_delay_ms = int((answer_time - last_word_display_time) * 1000)
 
             # Render the word as incorrect
-            logger.debug("Rendering current word '%s' as incorrect" % current_word)
+            logger.debug("Rendering current word '%s' as incorrect" % current_phrase.text)
             update_display()
+            
+            # Log to database
+            log_phrase_result(cursor, connection, current_phrase.batch_id, current_phrase.phrase_id, answer_delay_ms, "Incorrect")
 
             # Set up timer
             logger.debug("Setting new timer for display")
@@ -472,7 +546,7 @@ def game_loop():
                     # Unset timer
                     pygame.time.set_timer(pygame.USEREVENT + 1, 0)
                     
-                    if current_word_number == total_words:
+                    if current_phrase_number == total_words:
                         # We have reached the target number of words
                         # Time to leave the user no option but to quit
                         logger.debug("Setting state to BATCH_END")
@@ -590,6 +664,67 @@ else:
         cursor = connection.cursor()
         setup_database(cursor, connection)
         logger.info("Database setup complete")
+
+if arguments.import_phrases:
+    try:
+        import csv
+    except:
+        logger.error("Error importing CSV module")
+    
+    #try:
+    with open(arguments.import_phrases) as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            result = add_phrase_to_database(cursor, connection, row['phrase'], row['list'])
+            logger.debug(result)
+            if result != None:
+                logger.debug("Successfully added '%s' to database with id '%s'" % (row['phrase'], result))
+            else:
+                logger.warn("Skipped adding '%s' to database" % row['phrase'])
+    #except e:
+    #    print(e)
+    #logger.error("Something bad happened")
+    quit_sightright(0)
+
+logger.debug("Initializing pygame")
+pygame.init()
+game_clock = pygame.time.Clock()
+
+display_width = 480
+display_height = 272
+
+black = (0,0,0)
+white = (255,255,255)
+red = (255,0,0)
+green = (46,172,102)
+
+logger.debug("Setting display mode")
+game_display = pygame.display.set_mode((display_width,display_height))
+logger.debug("Setting window caption")
+pygame.display.set_caption('Flash Cards')
+logger.debug("Initializing clock")
+clock = pygame.time.Clock()
+logger.debug("Initializing font")
+sight_word_font = pygame.font.Font('freesansbold.ttf', 115)
+controls_font = pygame.font.Font('freesansbold.ttf', 20)
+
+phrases = get_phrase_batch(cursor, connection, 30)
+
+total_words = 30
+current_phrase_number = 0
+score = 0
+
+current_phrase = phrases[current_phrase_number]
+
+logger.debug("Setting state to BATCH_START")
+
+game_state = BATCH_START
+# Update the display now before starting the loop
+# Otherwise we need an update_display() call in the loop for BATCH_START
+# which makes it unnecessarily chatty in the debug logs
+update_display()
+
+#logger.debug("Current word is: %s" % current_phrase.text)
 
 logger.debug("Starting game loop")
 game_loop()
