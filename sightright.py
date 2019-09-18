@@ -254,6 +254,12 @@ def update_display():
 
     main_word_surface = sight_word_font.render(word, True, text_color)
     main_word_rectangle = main_word_surface.get_rect()
+    if main_word_rectangle.width > display_width:
+        logger.debug("Scaling down phrase '%s'; too wide to fit naturally" % word)
+        scale_factor = display_width / main_word_rectangle.width
+        logger.debug("Using scaling factor of %s" % scale_factor)
+        main_word_surface = pygame.transform.smoothscale(main_word_surface, (display_width, int(main_word_rectangle.height * scale_factor)))
+        main_word_rectangle = main_word_surface.get_rect()
     main_word_rectangle.center = ((display_width/2), (display_height/2))
     background.blit(main_word_surface, main_word_rectangle)
 
