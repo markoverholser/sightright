@@ -121,6 +121,7 @@ def update_display():
     global current_phrase
     global game_state
     global score
+    global words_attempted
     global background_color
     global text_color
 
@@ -221,7 +222,7 @@ def update_display():
     quit_control_rectangle.topleft = (0, 0)
     background.blit(quit_control_surface, quit_control_rectangle)
 
-    score_control_text = "Score: %d (%d%%)" % (score, int((score/max(current_phrase_number-1, 1))*100))
+    score_control_text = "Score: %d (%d%%)" % (score, int((score/max(words_attempted, 1))*100))
     score_control_surface = controls_font.render(score_control_text, True, text_color)
     score_control_rectangle = score_control_surface.get_rect()
     score_control_rectangle.topright = (display_width, 0)
@@ -416,6 +417,7 @@ def game_loop():
     global current_phrase_number
     global score
     global answer_delay_ms
+    global words_attempted
 
     logger.debug("Game loop beginning")
     logger.debug("Current word is: %s" % current_phrase.text)
@@ -498,6 +500,7 @@ def game_loop():
             #pygame.event.clear()
 
             # Add to score
+            words_attempted += 1
             score += 1
 
             # Calculate number of milliseconds since word was displayed
@@ -523,6 +526,9 @@ def game_loop():
             # Clear the event queue
             #pygame.event.clear()
 
+            # Increment the number of attempts, for scoring purposes
+            words_attempted += 1
+            
             # Calculate number of milliseconds since word was displayed
             answer_time = time.monotonic()
             answer_delay_ms = int((answer_time - last_word_display_time) * 1000)
@@ -719,6 +725,7 @@ phrases = get_phrase_batch(cursor, connection, 30)
 total_words = 30
 current_phrase_number = 0
 score = 0
+words_attempted = 0
 
 current_phrase = phrases[current_phrase_number]
 
