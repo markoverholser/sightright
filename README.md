@@ -1,6 +1,10 @@
 # sightright
 SightRight is a training program for parents and teachers to use to train sight words with students and children.
 
+![Main splash screen](main.png)
+
+![Presenting a word](word.png)
+
 ## How to use
 
 Written for Python 3. You'll need to have PyGame installed, so install that (if you haven't already).
